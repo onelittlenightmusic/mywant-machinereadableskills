@@ -4,37 +4,36 @@ Machine Readable Skills are Claude Code skills that output structured JSON,
 making them directly consumable by automated systems such as
 [MyWant](https://github.com/onelittlenightmusic/mywant) want types via `onFetchData` JSON path mappings.
 
-## Relation to AGENTS.md
+## Relation to AGENTS.md and AgentSkills
 
-This format is a **superset of [AGENTS.md](https://Agents.md)**
-(Agentic AI Foundation / Linux Foundation open specification):
+This format is a **superset of both**:
+
+- **[AGENTS.md](https://Agents.md)** (Agentic AI Foundation / Linux Foundation) — a "README for agents"; no required fields, pure Markdown
+- **[AgentSkills](https://Agentskills.md)** (originally by Anthropic, now open standard) — `SKILL.md` with required `name` + `description` frontmatter
 
 ```
-AGENTS.md format  ⊂  Machine Readable Skill format
+AGENTS.md format  ⊂  AgentSkills (SKILL.md) format  ⊂  Machine Readable Skill format
 ```
 
-- Every Machine Readable Skill descriptor (`<skill-name>.md`) is a valid AGENTS.md file.
-- Not every AGENTS.md file is a Machine Readable Skill descriptor (the additional sections below are required).
-- Repositories using this format must also have an `AGENTS.md` at the root per the spec.
+Every Machine Readable Skill `SKILL.md` is a valid AgentSkills `SKILL.md`.
+Every AgentSkills `SKILL.md` is a valid AGENTS.md file.
+The Machine Readable Skills format adds JSON output requirements on top.
 
-### What AGENTS.md requires
+### Compatibility table
 
-The AGENTS.md spec has **no required fields** — it is pure Markdown used as a
-"README for agents". Machine Readable Skills respect this by never violating Markdown structure
-and by keeping all additional requirements additive (new sections, not new constraints on existing content).
-
-### What Machine Readable Skills add
-
-On top of the AGENTS.md baseline, this format requires:
-
-| Addition | Where |
-|---|---|
-| Claude Code `description:` frontmatter | `<skill-name>.md` |
-| `## 出力JSON形式` section with example JSON | `<skill-name>.md` |
-| Field description table | `<skill-name>.md` |
-| `### エラー時` section | `<skill-name>.md` |
-| `main.py` outputting only valid JSON | `main.py` |
-| `AGENTS.md` at repository root | repo root |
+| Requirement | AGENTS.md | AgentSkills | Machine Readable Skills |
+|---|---|---|---|
+| Valid Markdown | required | required | required |
+| `name` frontmatter | — | **required** | **required** |
+| `description` frontmatter | — | **required** | **required** |
+| File named `SKILL.md` | — | **required** | **required** |
+| `name` matches directory name | — | required | required |
+| `license` / `compatibility` / `metadata` | — | optional | optional |
+| `## 出力JSON形式` section | — | — | **required** |
+| Field description table | — | — | **required** |
+| `### エラー時` section | — | — | **required** |
+| `main.py` outputs only valid JSON | — | — | **required** |
+| `AGENTS.md` at repo root | best practice | — | **required** |
 
 ---
 
@@ -42,16 +41,34 @@ On top of the AGENTS.md baseline, this format requires:
 
 ```
 <skill-name>/
-├── <skill-name>.md   # Skill descriptor (AGENTS.md-compatible + Claude Code frontmatter + JSON schema)
-└── main.py           # Executable entry point
+├── SKILL.md          # Required: AgentSkills-compliant descriptor + JSON output schema
+└── main.py           # Executable entry point (outputs JSON to stdout)
 AGENTS.md             # Project-level agent context (required per Agents.md spec)
 RULE.md               # This file
 README.md             # Human-facing documentation
 ```
 
+The `name` field in `SKILL.md` frontmatter must match the parent directory name exactly.
+
 ---
 
-## 2. stdout Must Be Valid JSON
+## 2. SKILL.md Frontmatter
+
+```yaml
+---
+name: <skill-name>           # Required (AgentSkills). Must match directory name.
+description: <description>   # Required (AgentSkills). Max 1024 chars. Describe what
+                             # the skill does AND when to use it, with specific keywords.
+compatibility: ...           # Optional. Runtime requirements (Python version, system tools, etc.)
+metadata:                    # Optional. Arbitrary key-value pairs.
+  output-format: json
+  json-schema: see "出力JSON形式" section below
+---
+```
+
+---
+
+## 3. stdout Must Be Valid JSON
 
 The script **must** output a single valid JSON object to stdout and nothing else.
 
@@ -68,7 +85,7 @@ or be suppressed (e.g. `2>/dev/null` at the call site).
 
 ---
 
-## 3. Error Output Format
+## 4. Error Output Format
 
 On failure the script must output a JSON object containing an `"error"` key
 and exit with a **non-zero** exit code.
@@ -83,8 +100,7 @@ def error_out(message: str) -> None:
     sys.exit(1)
 ```
 
-Any domain-specific fields should be included with safe empty defaults so that
-consumers can always parse the output regardless of success or failure:
+Any domain-specific fields should be included with safe empty defaults:
 
 ```json
 { "error": "ブラウザに接続できません", "count": 0, "emails": [] }
@@ -92,22 +108,10 @@ consumers can always parse the output regardless of success or failure:
 
 ---
 
-## 4. Skill Descriptor (`<skill-name>.md`)
-
-The `.md` file serves three purposes:
-
-1. **AGENTS.md context** — valid Markdown that AI agents can read for project context
-2. **Claude Code skill definition** — frontmatter `description` and invocation instructions
-3. **JSON schema documentation** — output contract for automated consumers
-
-### Required structure
+## 5. SKILL.md Body — Required Sections
 
 ```markdown
----
-description: <one-line description for Claude Code skill picker>
----
-
-<!-- invocation instructions using ${CLAUDE_SKILL_DIR}/main.py — no hardcoded absolute paths -->
+<!-- invocation instructions using ${CLAUDE_SKILL_DIR}/main.py -->
 
 ## 出力JSON形式
 
@@ -130,56 +134,44 @@ description: <one-line description for Claude Code skill picker>
 
 ---
 
-## 5. Portable Paths — Use `${CLAUDE_SKILL_DIR}`
+## 6. Portable Paths — Use `${CLAUDE_SKILL_DIR}`
 
-Skill descriptors must **not** contain hardcoded absolute paths.
-Use the Claude Code built-in variable `${CLAUDE_SKILL_DIR}` which resolves to
-the directory containing the skill's `.md` file at runtime:
+`SKILL.md` must **not** contain hardcoded absolute paths.
+Use `${CLAUDE_SKILL_DIR}` which resolves to the skill's directory at runtime:
 
 ```bash
-# ✅ correct — portable across installations
+# ✅ correct
 python3 "${CLAUDE_SKILL_DIR}/main.py" $ARGUMENTS
 
-# ❌ wrong — breaks on any machine other than the original author's
-python3 /Users/hiroyukiosaki/.mywant/skills/transit/main.py $ARGUMENTS
+# ❌ wrong
+python3 /Users/someone/.mywant/skills/transit/main.py $ARGUMENTS
 ```
 
 ---
 
-## 6. JSON Schema Stability
+## 7. JSON Schema Stability
 
-Field names in the output JSON are part of the public contract.
-They are referenced by `onFetchData` JSON paths in MyWant want type definitions:
+Field names in the output JSON are part of the public contract,
+referenced by `onFetchData` JSON paths in MyWant want type definitions:
 
 ```yaml
-# want type YAML example
 state:
   - name: email_count
-    type: int
-    label: current
-    persistent: true
-    initialValue: 0
-    onFetchData: "count"                  # ← must match JSON output key exactly
-
+    onFetchData: "count"               # ← must match JSON key exactly
   - name: first_subject
-    type: string
-    label: current
-    persistent: true
-    initialValue: ""
-    onFetchData: "emails[0].subject"      # ← dot-notation + array index supported
+    onFetchData: "emails[0].subject"   # ← dot-notation + array index
 ```
 
-Supported JSON path syntax: `key`, `key.subkey`, `array[n]`, `array[n].key`, `a[n].b[m].c`
+Supported syntax: `key`, `key.subkey`, `array[n]`, `array[n].key`, `a[n].b[m].c`
 
-**Breaking changes to field names require a version bump in the skill descriptor.**
+**Breaking changes to field names require a version bump (`metadata.version`).**
 
 ---
 
-## 7. stderr Usage
+## 8. stderr Usage
 
-stderr is for runtime warnings that do not affect the JSON output contract
-(e.g. Node.js deprecation warnings from Playwright, debug logs).
-Call sites should suppress stderr when consuming the skill programmatically:
+stderr is for runtime warnings only (e.g. Node.js deprecation warnings).
+Suppress at call sites:
 
 ```sh
 OUTPUT=$(python3 "${CLAUDE_SKILL_DIR}/main.py" "$ARG" 2>/dev/null)
@@ -187,18 +179,18 @@ OUTPUT=$(python3 "${CLAUDE_SKILL_DIR}/main.py" "$ARG" 2>/dev/null)
 
 ---
 
-## 8. Skill Checklist
+## 9. Skill Checklist
 
-Before adding a new skill to this repository, verify:
-
+- [ ] Directory named with lowercase alphanumeric + hyphens (AgentSkills `name` rules)
+- [ ] `SKILL.md` present (not `<skill-name>.md`)
+- [ ] `name:` frontmatter matches directory name exactly
+- [ ] `description:` frontmatter is non-empty and ≤ 1024 chars, includes when-to-use keywords
+- [ ] `compatibility:` lists runtime requirements
+- [ ] `SKILL.md` uses `${CLAUDE_SKILL_DIR}/main.py` — no hardcoded absolute paths
+- [ ] `SKILL.md` contains `## 出力JSON形式` section with field table
+- [ ] `SKILL.md` contains `### エラー時` section
 - [ ] `main.py` outputs only valid JSON to stdout on success
-- [ ] `main.py` outputs `{"error": "..."}` to stdout and exits non-zero on failure
-- [ ] No human-readable text is written to stdout
+- [ ] `main.py` outputs `{"error": "..."}` + exits non-zero on failure
+- [ ] No human-readable text written to stdout
 - [ ] Stderr warnings do not bleed into stdout
-- [ ] `<skill-name>.md` uses `${CLAUDE_SKILL_DIR}/main.py` — no hardcoded absolute paths
-- [ ] `<skill-name>.md` contains the `## 出力JSON形式` section with field table
-- [ ] `<skill-name>.md` contains the `### エラー時` section
-- [ ] All output fields are documented and named stably
-- [ ] The skill directory is named identically to the `.md` file and the Claude Code skill name
-- [ ] `<skill-name>.md` is valid Markdown (AGENTS.md compatible)
-- [ ] Root `AGENTS.md` updated if new skill changes the project overview
+- [ ] Root `AGENTS.md` updated if new skill changes project overview

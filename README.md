@@ -8,11 +8,21 @@ Claude Code skills that output structured JSON — ready to be converted into [M
 
 A **Machine Readable Skill** is a Claude Code skill where `main.py` always writes a single valid JSON object to stdout. This makes the skill usable not just interactively (via `/skill-name`) but also programmatically by automated pipelines.
 
-This format is a **superset of [AGENTS.md](https://Agents.md)**: every skill descriptor (`<skill-name>.md`) is a valid AGENTS.md file, with additional mandatory sections (Claude Code frontmatter + JSON output schema) layered on top.
+### Format hierarchy
+
+This format is a **superset of both [AGENTS.md](https://Agents.md) and [AgentSkills](https://Agentskills.md)**:
 
 ```
-AGENTS.md format  ⊂  Machine Readable Skill format
+AGENTS.md  ⊂  AgentSkills (SKILL.md)  ⊂  Machine Readable Skills
 ```
+
+| Standard | Governed by | Key requirement |
+|---|---|---|
+| [AGENTS.md](https://Agents.md) | Agentic AI Foundation / Linux Foundation | Pure Markdown, no required fields |
+| [AgentSkills](https://Agentskills.md) | Originally Anthropic, now open standard | `SKILL.md` with `name` + `description` frontmatter |
+| Machine Readable Skills | This repo | Above + `main.py` outputs JSON + `## 出力JSON形式` section |
+
+Every skill `SKILL.md` in this repository is a valid AgentSkills skill, and every AgentSkills `SKILL.md` is a valid AGENTS.md file.
 
 ---
 
@@ -28,9 +38,9 @@ AGENTS.md format  ⊂  Machine Readable Skill format
 
 ## Usage
 
-### As a Claude Code skill
+### As a Claude Code / AgentSkills skill
 
-スキルディレクトリを `~/.mywant/skills/` に配置することで `/skill-name` コマンドとして使用できます:
+`SKILL.md` は AgentSkills 標準に準拠しているため、Claude Code、GitHub Copilot、Cursor 等で利用できます。
 
 ```sh
 git clone https://github.com/onelittlenightmusic/mywant-machinereadableskills
@@ -46,7 +56,7 @@ Claude Code から:
 
 ### As a MyWant want type
 
-各スキルに対応した want type YAML が `~/.mywant/custom-types/` に配置されていれば、MyWant から直接呼び出せます:
+対応する want type YAML が `~/.mywant/custom-types/` にあれば MyWant から直接呼び出せます:
 
 ```yaml
 wants:
@@ -63,30 +73,17 @@ wants:
 
 ```
 <skill-name>/
-├── <skill-name>.md   # Claude Code skill descriptor (AGENTS.md-compatible)
-│                     # + JSON output schema documentation
-└── main.py           # Python entry point — stdout is always valid JSON
-AGENTS.md             # Project-level context for AI agents (per Agents.md spec)
-README.md             # This file
-RULE.md               # Machine Readable Skills specification
+├── SKILL.md    # AgentSkills-compliant descriptor (name + description frontmatter)
+│               # + AGENTS.md-compatible Markdown
+│               # + JSON output schema (## 出力JSON形式)
+└── main.py     # Entry point — stdout is always valid JSON
+AGENTS.md       # Project-level context for AI agents (per Agents.md spec)
+README.md       # This file
+RULE.md         # Machine Readable Skills specification
 ```
 
 ---
 
 ## Adding a skill
 
-See [RULE.md](./RULE.md) for the full specification and contribution checklist.
-
----
-
-## Relation to AGENTS.md
-
-This repository follows the [AGENTS.md](https://Agents.md) open specification at two levels:
-
-1. **Repository level**: `AGENTS.md` at the root provides project context for AI agents per the spec.
-2. **Skill level**: Each `<skill-name>.md` is a valid AGENTS.md file (pure Markdown, no required fields violated) extended with Claude Code frontmatter and a mandatory JSON schema section.
-
-The Machine Readable Skills format adds these requirements on top of AGENTS.md:
-- Claude Code `description:` frontmatter
-- `## 出力JSON形式` section with example JSON and field table
-- `### エラー時` section documenting error output
+See [RULE.md](./RULE.md) for the full specification and checklist.

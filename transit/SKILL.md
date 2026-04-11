@@ -1,5 +1,10 @@
 ---
-description: Yahoo!路線情報で乗り換え案内を検索する（例: /transit 新宿 渋谷 / /transit 新宿 渋谷 09:30 到着）
+name: transit
+description: Yahoo!路線情報で乗り換え案内を検索し結果をJSONで返す。電車・バスの経路検索、出発・到着時刻の確認、乗換回数・料金の取得が必要なときに使用する（例: /transit 新宿 渋谷 / /transit 新宿 渋谷 09:30 到着）。
+compatibility: Requires Python 3.x, playwright, and a running Chrome/Chromium CDP server at localhost:9222
+metadata:
+  output-format: json
+  json-schema: see "出力JSON形式" section below
 ---
 
 $ARGUMENTS
