@@ -10,19 +10,18 @@ A **Machine Readable Skill** is a Claude Code skill where `main.py` always write
 
 ### Format hierarchy
 
-This format is a **superset of both [AGENTS.md](https://Agents.md) and [AgentSkills](https://Agentskills.md)**:
+This format is a **superset of [AgentSkills](https://Agentskills.md)**:
 
 ```
-AGENTS.md  ⊂  AgentSkills (SKILL.md)  ⊂  Machine Readable Skills
+AgentSkills (SKILL.md)  ⊂  Machine Readable Skills
 ```
 
 | Standard | Governed by | Key requirement |
 |---|---|---|
-| [AGENTS.md](https://Agents.md) | Agentic AI Foundation / Linux Foundation | Pure Markdown, no required fields |
 | [AgentSkills](https://Agentskills.md) | Originally Anthropic, now open standard | `SKILL.md` with `name` + `description` frontmatter |
 | Machine Readable Skills | This repo | Above + `main.py` outputs JSON + `## 出力JSON形式` section |
 
-Every skill `SKILL.md` in this repository is a valid AgentSkills skill, and every AgentSkills `SKILL.md` is a valid AGENTS.md file.
+Every skill `SKILL.md` in this repository is a valid AgentSkills skill.
 
 ---
 

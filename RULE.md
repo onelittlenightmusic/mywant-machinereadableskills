@@ -4,36 +4,33 @@ Machine Readable Skills are Claude Code skills that output structured JSON,
 making them directly consumable by automated systems such as
 [MyWant](https://github.com/onelittlenightmusic/mywant) want types via `onFetchData` JSON path mappings.
 
-## Relation to AGENTS.md and AgentSkills
+## Relation to AgentSkills
 
-This format is a **superset of both**:
+This format is a **superset of [AgentSkills](https://Agentskills.md)**:
 
-- **[AGENTS.md](https://Agents.md)** (Agentic AI Foundation / Linux Foundation) — a "README for agents"; no required fields, pure Markdown
 - **[AgentSkills](https://Agentskills.md)** (originally by Anthropic, now open standard) — `SKILL.md` with required `name` + `description` frontmatter
 
 ```
-AGENTS.md format  ⊂  AgentSkills (SKILL.md) format  ⊂  Machine Readable Skill format
+AgentSkills (SKILL.md) format  ⊂  Machine Readable Skill format
 ```
 
 Every Machine Readable Skill `SKILL.md` is a valid AgentSkills `SKILL.md`.
-Every AgentSkills `SKILL.md` is a valid AGENTS.md file.
 The Machine Readable Skills format adds JSON output requirements on top.
 
 ### Compatibility table
 
-| Requirement | AGENTS.md | AgentSkills | Machine Readable Skills |
-|---|---|---|---|
-| Valid Markdown | required | required | required |
-| `name` frontmatter | — | **required** | **required** |
-| `description` frontmatter | — | **required** | **required** |
-| File named `SKILL.md` | — | **required** | **required** |
-| `name` matches directory name | — | required | required |
-| `license` / `compatibility` / `metadata` | — | optional | optional |
-| `## 出力JSON形式` section | — | — | **required** |
-| Field description table | — | — | **required** |
-| `### エラー時` section | — | — | **required** |
-| `main.py` outputs only valid JSON | — | — | **required** |
-| `AGENTS.md` at repo root | best practice | — | **required** |
+| Requirement | AgentSkills | Machine Readable Skills |
+|---|---|---|
+| Valid Markdown | required | required |
+| `name` frontmatter | **required** | **required** |
+| `description` frontmatter | **required** | **required** |
+| File named `SKILL.md` | **required** | **required** |
+| `name` matches directory name | required | required |
+| `license` / `compatibility` / `metadata` | optional | optional |
+| `## 出力JSON形式` section | — | **required** |
+| Field description table | — | **required** |
+| `### エラー時` section | — | **required** |
+| `main.py` outputs only valid JSON | — | **required** |
 
 ---
 
