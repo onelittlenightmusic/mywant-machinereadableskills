@@ -7,7 +7,7 @@ $ARGUMENTS
 上記を引数として以下のコマンドを実行し、出力をそのまま表示してください:
 
 ```bash
-python3 /Users/hiroyukiosaki/.mywant/skills/transit/main.py $ARGUMENTS
+python3 "${CLAUDE_SKILL_DIR}/main.py" $ARGUMENTS
 ```
 
 引数が不足している場合は「出発地と目的地を指定してください（例: /transit 新宿 渋谷）」と伝えてください。
