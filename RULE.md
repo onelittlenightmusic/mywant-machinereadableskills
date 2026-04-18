@@ -32,6 +32,7 @@ The Machine Readable Skills format adds JSON output requirements and MyWant want
 | `## 出力フィールド` section | — | **required** |
 | `## エラー時` section | — | **required** |
 | `main.py` outputs only valid JSON | — | **required** |
+| `agent.yaml` present in directory | — | **required** |
 
 ---
 
@@ -40,7 +41,8 @@ The Machine Readable Skills format adds JSON output requirements and MyWant want
 ```
 <skill-name>/
 ├── SKILL.md          # Required: AgentSkills-compliant descriptor + JSON output schema
-└── main.py           # Executable entry point (outputs JSON to stdout)
+├── main.py           # Executable entry point (outputs JSON to stdout)
+└── agent.yaml        # Required: MRS plugin agent declaration (capability + state_updates)
 AGENTS.md             # Project-level agent context (required per Agents.md spec)
 RULE.md               # This file
 README.md             # Human-facing documentation
@@ -81,7 +83,110 @@ metadata:                    # Optional. Controls want type YAML generation.
 
 ---
 
-## 3. stdout Must Be Valid JSON
+## 3. `agent.yaml` — Plugin Agent Declaration
+
+Each skill directory must contain an `agent.yaml` that registers a plugin agent into the MyWant
+`AgentRegistry`. The engine loads these automatically at startup from `~/.mywant/custom-types/`.
+
+### Format
+
+```yaml
+agent:
+  metadata:
+    name: <agent-name>           # Unique agent identifier (snake_case)
+    capability: <capability>     # Capability name referenced by want type's `requires`
+    type: do | monitor           # do → foreground, monitor → background
+  script:
+    path: ./main.py              # Relative to this directory
+    timeout_seconds: 120         # Max execution time
+  state_updates:                 # Output fields extracted directly from script JSON
+    - name: <field-name>
+      type: string | int | float | bool | object
+      label: current
+      persistent: true | false
+      onFetchData: "<json-path>"  # Dot-notation path into script output (e.g. "routes[0].summary")
+```
+
+### Rules
+
+| Field | Rule |
+|---|---|
+| `metadata.capability` | Must match the value used in `requires:` in the want type YAML |
+| `metadata.type` | `do` for `実行モデル: foreground`, `monitor` for `実行モデル: background` |
+| `script.path` | Relative path from the skill directory; `./main.py` is standard |
+| `state_updates[].onFetchData` | Same JSON path as `onFetchData` in the old `fetchFrom: mrs_raw_output` pattern |
+| `state_updates[].name` | Must match the field name declared in the want type's `state` block |
+
+### `onFetchData` path syntax
+
+| Syntax | Example | Meaning |
+|---|---|---|
+| top-level key | `"status"` | `output["status"]` |
+| nested key | `"confirmation.service"` | `output["confirmation"]["service"]` |
+| array index | `"routes[0].summary"` | `output["routes"][0]["summary"]` |
+| deep nested | `"routes[0].legs[0].line"` | `output["routes"][0]["legs"][0]["line"]` |
+
+### Example — foreground (do) agent
+
+```yaml
+agent:
+  metadata:
+    name: smartgolf_book_agent
+    capability: smartgolf_book
+    type: do
+  script:
+    path: ./main.py
+    timeout_seconds: 120
+  state_updates:
+    - name: status
+      type: string
+      label: current
+      persistent: true
+      onFetchData: "status"
+    - name: summary
+      type: string
+      label: current
+      persistent: true
+      onFetchData: "summary"
+    - name: reservation_datetime
+      type: string
+      label: current
+      persistent: true
+      onFetchData: "confirmation.reservation_datetime"
+```
+
+### Example — background (monitor) agent
+
+```yaml
+agent:
+  metadata:
+    name: smartgolf_list_available_agent
+    capability: smartgolf_list_available
+    type: monitor
+  script:
+    path: ./main.py
+    timeout_seconds: 120
+  state_updates:
+    - name: status
+      type: string
+      label: current
+      persistent: true
+      onFetchData: "status"
+    - name: smartgolf_all_available_times
+      type: object
+      label: current
+      persistent: true
+      onFetchData: "available_times"
+    - name: first_room
+      type: string
+      label: current
+      persistent: true
+      onFetchData: "available_times[0].room"
+```
+
+---
+
+## 4. stdout Must Be Valid JSON
 
 The script **must** output a single valid JSON object to stdout and nothing else.
 
@@ -98,7 +203,7 @@ or be suppressed (e.g. `2>/dev/null` at the call site).
 
 ---
 
-## 4. Error Output Format
+## 5. Error Output Format
 
 On failure the script must output a JSON object containing an `"error"` key
 and exit with a **non-zero** exit code.
@@ -121,9 +226,9 @@ Any domain-specific fields should be included with safe empty defaults:
 
 ---
 
-## 5. SKILL.md Body — Required Sections
+## 6. SKILL.md Body — Required Sections
 
-### 5.1 `## 実行特性` (required)
+### 6.1 `## 実行特性` (required)
 
 Declares the execution model. This single field mechanically determines `child-role` and which MRS agent to use.
 
@@ -137,16 +242,16 @@ Declares the execution model. This single field mechanically determines `child-r
 
 **Allowed values:**
 
-| 値 | Meaning | → child-role | → requires (agent) |
-|---|---|---|---|
-| `foreground` | Triggered externally, runs once and completes | `doer` | `do_mrs_agent` |
-| `background` | Runs autonomously and repeatedly in the background | `monitor` | `monitor_mrs_agent` |
+| 値 | Meaning | → child-role | → agent.yaml type | → requires |
+|---|---|---|---|---|
+| `foreground` | Triggered externally, runs once and completes | `doer` | `do` | `<capability>` (e.g. `transit_search`) |
+| `background` | Runs autonomously and repeatedly in the background | `monitor` | `monitor` | `<capability>` (e.g. `gmail_list_unread`) |
 
-The value of `実行モデル` alone fully determines `child-role` and `requires`.
+The value of `実行モデル` alone fully determines `child-role`, `agent.yaml` type, and `requires`.
 
 ---
 
-### 5.2 `## パラメータ` (required if the skill takes arguments)
+### 6.2 `## パラメータ` (required if the skill takes arguments)
 
 Describes input parameters. Each row becomes a `parameters[]` entry and a mirrored `state` field.
 
@@ -193,9 +298,9 @@ Describes input parameters. Each row becomes a `parameters[]` entry and a mirror
 
 ---
 
-### 5.3 `## 出力フィールド` (required)
+### 6.3 `## 出力フィールド` (required)
 
-Describes each field in the JSON output. This drives `fetchFrom` / `onFetchData` generation in the want type state.
+Describes each field in the JSON output. Each row becomes a `state_updates` entry in `agent.yaml` (with `onFetchData`) and a corresponding field declaration in the want type `state` block (without `fetchFrom`/`onFetchData`).
 
 ```markdown
 ## 出力フィールド
@@ -223,7 +328,7 @@ Describes each field in the JSON output. This drives `fetchFrom` / `onFetchData`
 
 ---
 
-### 5.4 `## 使用例` (recommended)
+### 6.4 `## 使用例` (recommended)
 
 Provides example invocations and outputs. Used to generate `examples:` in the want type YAML.
 
@@ -251,7 +356,7 @@ python3 "${CLAUDE_SKILL_DIR}/main.py" '{"room": "中野新橋店/打席予約(Ro
 
 ---
 
-### 5.5 `## エラー時` (required)
+### 6.5 `## エラー時` (required)
 
 ```markdown
 ## エラー時
@@ -263,7 +368,7 @@ python3 "${CLAUDE_SKILL_DIR}/main.py" '{"room": "中野新橋店/打席予約(Ro
 
 ---
 
-## 6. Portable Paths — Use `${CLAUDE_SKILL_DIR}`
+## 7. Portable Paths — Use `${CLAUDE_SKILL_DIR}`
 
 `SKILL.md` must **not** contain hardcoded absolute paths.
 Use `${CLAUDE_SKILL_DIR}` which resolves to the skill's directory at runtime:
@@ -278,7 +383,7 @@ python3 /Users/someone/.mywant/skills/transit/main.py $ARGUMENTS
 
 ---
 
-## 7. JSON Schema Stability
+## 8. JSON Schema Stability
 
 Field names in the output JSON are part of the public contract,
 referenced by `onFetchData` JSON paths in MyWant want type definitions.
@@ -287,7 +392,7 @@ referenced by `onFetchData` JSON paths in MyWant want type definitions.
 
 ---
 
-## 8. stderr Usage
+## 9. stderr Usage
 
 stderr is for runtime warnings only. Suppress at call sites:
 
@@ -297,27 +402,29 @@ OUTPUT=$(python3 "${CLAUDE_SKILL_DIR}/main.py" "$ARG" 2>/dev/null)
 
 ---
 
-## 9. Want Type YAML Generation Rules
+## 10. Want Type YAML Generation Rules
 
 This section defines how to generate a complete, GCP-compliant want type YAML from a `SKILL.md`.
 An LLM generating YAML must follow all rules in this section exactly.
 
-### 9.1 Overall structure
+### 10.1 Overall structure
+
+Two files are generated per skill: `agent.yaml` (see §3) and the want type YAML.
 
 ```yaml
 wantType:
   metadata:         # from frontmatter + 実行特性
   finalResultField: # from metadata.final-result-field or auto-selected
   parameters:       # from ## パラメータ table
-  state:            # fixed scaffold + param mirrors + fixed status + output fields (see §9.3)
-  onInitialize:     # see §9.4
-  requires:         # from 実行モデル (see §9.5)
+  state:            # param mirrors + execution status + output fields (see §10.3)
+  onInitialize:     # see §11.4
+  requires:         # capability name from agent.yaml (see §10.5)
   examples:         # from ## 使用例
 ```
 
 ---
 
-### 9.2 `metadata` block
+### 10.2 `metadata` block
 
 ```yaml
 metadata:
@@ -345,52 +452,37 @@ Omit `child-role` only when the want has no parent coordinator.
 
 ---
 
-### 9.3 `state` block
+### 10.3 `state` block
 
-Generate the following state fields in order. Every field must have a `label` (GCP requirement — see §9.4).
+Generate the following state fields in order. Every field must have a `label` (GCP requirement — see §11.4).
 
-**Layer 1 — MRS agent scaffold fields** (code-required):
+**Layer 1 — Argument fields** (only when the skill takes CLI arguments):
 
-These four fields are read or written directly by `do_mrs_agent` / `monitor_mrs_agent` engine code.
-Their names and types are part of the engine contract and must not be changed.
-
-| Field | Read/written by | How |
-|---|---|---|
-| `skill_timeout_seconds` | `do_mrs_agent` / `monitor_mrs_agent` | `GetGoal(want, "skill_timeout_seconds", 120)` |
-| `skill_path` | `do_mrs_agent` / `monitor_mrs_agent` | `GetCurrent(want, "skill_path", "")` |
-| `skill_json_arg` | `do_mrs_agent` / `monitor_mrs_agent` | `GetCurrent(want, "skill_json_arg", "")` |
-| `mrs_raw_output` | `do_mrs_agent` / `monitor_mrs_agent` | `want.SetCurrent("mrs_raw_output", raw)` |
+For skills with JSON-arg style (`skill_json_arg`):
 
 ```yaml
 state:
-  - name: skill_timeout_seconds
-    description: Max seconds to wait for the skill script to complete (default 120)
-    type: int
-    label: goal
-    persistent: false
-    initialValue: 120
-
-  - name: skill_path
-    description: Path to the MRS skill script (set by onInitialize)
-    type: string
-    label: current
-    persistent: false
-    initialValue: ""
-
   - name: skill_json_arg
     description: JSON string argument passed to the skill script (built from params)
     type: string
     label: current
     persistent: false
     initialValue: ""
+```
 
-  - name: mrs_raw_output
-    description: Raw JSON output from the MRS skill
-    type: object
+For skills with positional-arg style (`skill_args_keys`):
+
+```yaml
+state:
+  - name: skill_args_keys
+    description: Space-separated state field names used as positional CLI args
+    type: string
     label: current
     persistent: false
-    initialValue: null
+    initialValue: ""
 ```
+
+Omit Layer 1 entirely if the skill takes no arguments.
 
 **Layer 2 — Parameter mirrors** (one per `## パラメータ` row):
 
@@ -405,9 +497,9 @@ state:
 
 **Layer 3 — Execution status fields** (convention-required):
 
-`status` is functionally required: `scriptable_want.go`'s `IsAchieved()` checks `status != "pending"` to
+`status` is functionally required: the engine's `IsAchieved()` checks `status != "pending"` to
 determine completion. Without it, the want never finishes.
-`error` and `summary` are strong conventions followed by all MRS skills — omit them only with a clear reason.
+`error` and `summary` are strong conventions — omit them only with a clear reason.
 
 ```yaml
   - name: status
@@ -432,26 +524,29 @@ determine completion. Without it, the want never finishes.
     initialValue: ""
 ```
 
-**Layer 4 — Output fields** (one per `## 出力フィールド` row; skip any row where `フィールド名` is `status` or `error`):
+**Layer 4 — Output fields** (one per `## 出力フィールド` row):
 
-For each row in `## 出力フィールド`, generate:
+Output field values are written **directly by the plugin agent** via `agent.yaml`'s `state_updates`.
+Do NOT add `fetchFrom` or `onFetchData` to the want type YAML — those belong in `agent.yaml`.
 
 ```yaml
   - name: <フィールド名>
     description: <説明>
     type: <型>
-    label: current     # GCP: current = values written by the agent
+    label: current
     persistent: <永続化>
     initialValue: <zero value for type>
-    fetchFrom: mrs_raw_output
-    onFetchData: "<JSONパス>"
 ```
 
 **Skip** any row whose `フィールド名` is `status` or `error` (already in Layer 3).
 
+> **Note:** The corresponding `onFetchData` JSON paths live in `agent.yaml`'s `state_updates`,
+> not in the want type YAML. The engine's `SetWantTypeDefinition` automatically injects any
+> `state_updates` fields declared in `agent.yaml` that are not already in the want type YAML.
+
 ---
 
-### 9.4 GCP state label reference
+### 10.4 GCP state label reference
 
 Every state field must have one of these labels:
 
@@ -461,7 +556,7 @@ Every state field must have one of these labels:
 | `current` | Runtime values observed or written during execution |
 | `plan` | Planned actions written by a thinker (not used in MRS types) |
 
-MRS want types use `goal` and `current` only.
+MRS want types use `current` only (and `goal` if operator-settable limits are needed).
 
 **GCP governance rule:**
 - `child-role: doer` → may write parent state fields labeled `label: current`
@@ -470,12 +565,13 @@ MRS want types use `goal` and `current` only.
 
 ---
 
-### 9.5 `onInitialize` block
+### 10.5 `onInitialize` block
+
+For JSON-arg skills:
 
 ```yaml
 onInitialize:
   current:
-    skill_path: "~/.mywant/custom-types/<frontmatter.name>/main.py"
     skill_json_arg: '<JSON template built from parameter names>'
 ```
 
@@ -484,25 +580,43 @@ onInitialize:
 - Order: same as table order
 - Result: a single-quoted JSON string, e.g. `'{"room":"${room}","date":"${date}","time":"${time}"}'`
 
-If the skill takes no arguments (no `## パラメータ` section), omit `skill_json_arg`.
-
----
-
-### 9.6 `requires` block
+For positional-arg skills:
 
 ```yaml
-# 実行モデル: foreground
-requires:
-  - do_mrs_agent
-
-# 実行モデル: background
-requires:
-  - monitor_mrs_agent
+onInitialize:
+  current:
+    skill_args_keys: "<space-separated param names>"
 ```
+
+Omit `onInitialize` entirely if the skill takes no arguments.
 
 ---
 
-### 9.7 `finalResultField`
+### 10.6 `requires` block
+
+`requires` references the **capability name** declared in `agent.yaml`'s `metadata.capability`.
+This is always the slug of the skill's want type name.
+
+```yaml
+# foreground skill (agent.yaml type: do)
+requires:
+  - <metadata.capability from agent.yaml>   # e.g. smartgolf_book
+
+# background skill (agent.yaml type: monitor)
+requires:
+  - <metadata.capability from agent.yaml>   # e.g. smartgolf_list_available
+```
+
+**Mapping table:**
+
+| `実行モデル` | `agent.yaml` type | `requires` value |
+|---|---|---|
+| `foreground` | `do` | `<capability>` (e.g. `transit_search`) |
+| `background` | `monitor` | `<capability>` (e.g. `smartgolf_list_available`) |
+
+---
+
+### 10.7 `finalResultField`
 
 Selection priority:
 1. `metadata.final-result-field` in frontmatter (explicit)
@@ -511,7 +625,7 @@ Selection priority:
 
 ---
 
-### 9.8 `examples` block
+### 10.8 `examples` block
 
 From `## 使用例`, extract parameter values from the bash invocation line and generate:
 
@@ -530,9 +644,48 @@ examples:
 
 ---
 
-### 9.9 Complete generated YAML example
+### 10.9 Complete generated example (`smartgolf_book`)
 
-Given the `smartgolf_book` SKILL.md, the generated YAML is:
+**`agent.yaml`** (generated alongside the want type):
+
+```yaml
+agent:
+  metadata:
+    name: smartgolf_book_agent
+    capability: smartgolf_book
+    type: do
+  script:
+    path: ./main.py
+    timeout_seconds: 120
+  state_updates:
+    - name: status
+      type: string
+      label: current
+      persistent: true
+      onFetchData: "status"
+    - name: summary
+      type: string
+      label: current
+      persistent: true
+      onFetchData: "summary"
+    - name: reservation_datetime
+      type: string
+      label: current
+      persistent: true
+      onFetchData: "confirmation.reservation_datetime"
+    - name: service
+      type: string
+      label: current
+      persistent: true
+      onFetchData: "confirmation.service"
+    - name: payment
+      type: string
+      label: current
+      persistent: true
+      onFetchData: "confirmation.payment"
+```
+
+**`smartgolf_book.yaml`** (want type):
 
 ```yaml
 wantType:
@@ -571,31 +724,13 @@ wantType:
       default: "selected_slot"
 
   state:
-    # Layer 1: MRS agent scaffold fields (engine code-required)
-    - name: skill_timeout_seconds
-      description: Max seconds to wait for the skill script to complete (default 120)
-      type: int
-      label: goal
-      persistent: false
-      initialValue: 120
-    - name: skill_path
-      description: Path to the MRS skill script (set by onInitialize)
-      type: string
-      label: current
-      persistent: false
-      initialValue: ""
+    # Layer 1: Argument field
     - name: skill_json_arg
       description: JSON string argument passed to the skill script (built from params)
       type: string
       label: current
       persistent: false
       initialValue: ""
-    - name: mrs_raw_output
-      description: Raw JSON output from the MRS skill (source for fetchFrom fields)
-      type: object
-      label: current
-      persistent: false
-      initialValue: null
 
     # Layer 2: Parameter mirrors
     - name: room
@@ -617,7 +752,7 @@ wantType:
       persistent: false
       initialValue: ""
 
-    # Layer 3: Execution status fields (convention-required; status checked by IsAchieved())
+    # Layer 3: Execution status fields
     - name: status
       description: Execution status (pending, done, failed)
       type: string
@@ -637,39 +772,32 @@ wantType:
       persistent: true
       initialValue: ""
 
-    # Layer 4: Output fields (from ## 出力フィールド)
+    # Layer 4: Output fields (values written by agent via agent.yaml state_updates)
     - name: reservation_datetime
       description: 予約日時テキスト
       type: string
       label: current
       persistent: true
       initialValue: ""
-      fetchFrom: mrs_raw_output
-      onFetchData: "confirmation.reservation_datetime"
     - name: service
       description: 店舗名
       type: string
       label: current
       persistent: true
       initialValue: ""
-      fetchFrom: mrs_raw_output
-      onFetchData: "confirmation.service"
     - name: payment
       description: 支払い方法
       type: string
       label: current
       persistent: true
       initialValue: ""
-      fetchFrom: mrs_raw_output
-      onFetchData: "confirmation.payment"
 
   onInitialize:
     current:
-      skill_path: "~/.mywant/custom-types/mywant-smartgolf-book-plugin/main.py"
       skill_json_arg: '{"room":"${room}","date":"${date}","time":"${time}"}'
 
   requires:
-    - do_mrs_agent
+    - smartgolf_book       # capability name from agent.yaml
 
   examples:
     - name: Book SmartGolf Room
@@ -687,7 +815,7 @@ wantType:
 
 ---
 
-## 10. Skill Checklist
+## 11. Skill Checklist
 
 **AgentSkills compliance:**
 - [ ] Directory named with lowercase alphanumeric + hyphens
@@ -707,11 +835,20 @@ wantType:
 - [ ] `## 使用例` section has at least one bash invocation + JSON output pair
 - [ ] `## エラー時` section present
 
+**`agent.yaml` (required):**
+- [ ] `agent.yaml` present in skill directory
+- [ ] `metadata.capability` matches the value in want type's `requires:`
+- [ ] `metadata.type` matches `実行モデル` (`foreground` → `do`, `background` → `monitor`)
+- [ ] `script.path` points to `./main.py`
+- [ ] `state_updates` entries have correct `onFetchData` paths matching actual JSON output keys
+- [ ] `state_updates` includes all fields from `## 出力フィールド` plus `status`
+
 **Want type YAML (GCP compliance):**
 - [ ] `child-role` label matches `実行モデル` (`foreground` → `doer`, `background` → `monitor`)
 - [ ] All state fields have a `label:` (`goal` / `current`)
-- [ ] Scaffold fields (skill_path, skill_json_arg, mrs_raw_output, param mirrors) have `persistent: false`
-- [ ] Status/result fields (status, error, summary, output fields) have `persistent: true`
-- [ ] `requires` matches `実行モデル` (`foreground` → `do_mrs_agent`, `background` → `monitor_mrs_agent`)
+- [ ] Argument/param-mirror fields have `persistent: false`
+- [ ] Status/result/output fields have `persistent: true`
+- [ ] No `fetchFrom` or `onFetchData` in want type YAML (those are in `agent.yaml`)
+- [ ] `requires` references the capability name from `agent.yaml` (NOT `do_mrs_agent`/`monitor_mrs_agent`)
 - [ ] `finalResultField` refers to a field defined in state
 - [ ] Root `AGENTS.md` updated if new skill changes project overview
