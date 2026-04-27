@@ -85,7 +85,7 @@ def main() -> None:
     try:
         no = int(sys.argv[1])
     except ValueError:
-        error_out(f"番号を整数で整数で指定してください (指定値: {sys.argv[1]})")
+        error_out(f"番号を整数で指定してください (指定値: {sys.argv[1]})")
 
     report_progress(10, "Loading email cache")
     emails = load_cache()
