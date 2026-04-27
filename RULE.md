@@ -138,11 +138,6 @@ agent:
     path: ./main.py
     timeout_seconds: 120
   state_updates:
-    - name: status
-      type: string
-      label: current
-      persistent: true
-      onFetchData: "status"
     - name: summary
       type: string
       label: current
@@ -167,11 +162,6 @@ agent:
     path: ./main.py
     timeout_seconds: 120
   state_updates:
-    - name: status
-      type: string
-      label: current
-      persistent: true
-      onFetchData: "status"
     - name: smartgolf_all_available_times
       type: object
       label: current
@@ -186,20 +176,63 @@ agent:
 
 ---
 
-## 4. stdout Must Be Valid JSON
+## 4. stdout Protocol
 
-The script **must** output a single valid JSON object to stdout and nothing else.
+The script **must** output a valid JSON object to stdout as its final result.
+Before the final result, it may emit **progress report lines** to report intermediate status in real time.
+
+### 4.1 Progress reporting
 
 ```python
-# ✅ correct
-print(json.dumps(result, ensure_ascii=False))
-
-# ❌ wrong — plain text breaks automated consumers
-print("処理が完了しました")
+def report_progress(percentage: int, message: str = "") -> None:
+    print(json.dumps({"_progress": percentage, "_message": message}, ensure_ascii=False), flush=True)
 ```
 
-Diagnostic messages, progress logs, and third-party warnings must go to **stderr** only,
-or be suppressed (e.g. `2>/dev/null` at the call site).
+Progress lines use the reserved key `_progress` (integer, 0–100) and optional `_message` (string).
+The engine reads these in real time and updates `achieving_percentage` and `summary` in the want state.
+
+```python
+# ✅ correct — progress lines before final result
+report_progress(5,  "ブラウザ起動中")
+report_progress(20, "ページ読み込み中")
+report_progress(80, "データ取得中")
+report_progress(100, "Done")
+print(json.dumps(result, ensure_ascii=False), flush=True)
+```
+
+### 4.2 Final result
+
+The **last non-progress JSON line** is used as the final result and stored in `mrs_raw_output`.
+All `state_updates` `onFetchData` paths are evaluated against this object.
+
+```python
+# ❌ wrong — plain text breaks automated consumers
+print("処理が完了しました")
+
+# ❌ wrong — flush=True missing (output may not arrive until process exits)
+print(json.dumps(result, ensure_ascii=False))
+
+# ❌ wrong — _progress key must not appear in final result
+print(json.dumps({"_progress": 100, "routes": [...]}, ensure_ascii=False))
+```
+
+Non-JSON lines and blank lines are silently ignored.
+Diagnostic messages must go to **stderr** only.
+
+### 4.3 `ImportError` guard
+
+Wrap the `playwright` import (and any other optional heavy dependency) at the module level so the
+script can report a useful JSON error even when the library is not installed:
+
+```python
+try:
+    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+except ImportError:
+    print(json.dumps({
+        "error": "playwright module not found. Install with: pip3 install playwright && playwright install chromium"
+    }, ensure_ascii=False), flush=True)
+    sys.exit(1)
+```
 
 ---
 
@@ -214,7 +247,7 @@ and exit with a **non-zero** exit code.
 
 ```python
 def error_out(message: str) -> None:
-    print(json.dumps({"error": message}, ensure_ascii=False))
+    print(json.dumps({"error": message}, ensure_ascii=False), flush=True)
     sys.exit(1)
 ```
 
@@ -324,7 +357,8 @@ Describes each field in the JSON output. Each row becomes a `state_updates` entr
 
 **Supported `JSONパス` syntax:** `key`, `key.subkey`, `array[n]`, `array[n].key`
 
-**Special rule:** `status` and `error` are always generated as fixed scaffold fields — omit them from this table.
+**Special rule:** `error` is always generated as a fixed scaffold field — omit it from this table.
+`status` is **no longer** a scaffold field; use `finalizeWhen` in the want type YAML for completion detection instead (see §10.3 Layer 3).
 
 ---
 
@@ -497,18 +531,11 @@ Omit Layer 1 entirely if the skill takes no arguments.
 
 **Layer 3 — Execution status fields** (convention-required):
 
-`status` is functionally required: the engine's `IsAchieved()` checks `status != "pending"` to
-determine completion. Without it, the want never finishes.
 `error` and `summary` are strong conventions — omit them only with a clear reason.
+`achieving_percentage` is written automatically by the engine from `_progress` lines; declare it here so the value is persisted.
+Do **not** include a `status` field — use `finalizeWhen` in the want type YAML instead.
 
 ```yaml
-  - name: status
-    description: Execution status (pending, done, failed)
-    type: string
-    label: current
-    persistent: true
-    initialValue: "pending"
-
   - name: error
     description: Error message if execution failed
     type: string
@@ -522,7 +549,34 @@ determine completion. Without it, the want never finishes.
     label: current
     persistent: true
     initialValue: ""
+
+  - name: achieving_percentage
+    description: Execution progress percentage (0-100), updated from _progress lines
+    type: int
+    label: current
+    persistent: false
+    initialValue: 0
 ```
+
+**Completion detection — `finalizeWhen` (required):**
+
+Declare `finalizeWhen` at the top level of the want type YAML (sibling of `state`).
+The engine evaluates these conditions after each execution cycle instead of relying on a `status` field.
+
+```yaml
+finalizeWhen:
+  achieved:
+    field: mrs_raw_output     # non-null once the script produces a successful JSON result
+    operator: "!="
+    value: null
+  failed:
+    field: error
+    operator: "!="
+    value: ""
+```
+
+Supported operators: `==`, `!=`, `>`, `>=`, `<`, `<=`.
+`mrs_raw_output` is the raw JSON object from the last successful script execution; it is `null` before the script runs.
 
 **Layer 4 — Output fields** (one per `## 出力フィールド` row):
 
@@ -658,11 +712,6 @@ agent:
     path: ./main.py
     timeout_seconds: 120
   state_updates:
-    - name: status
-      type: string
-      label: current
-      persistent: true
-      onFetchData: "status"
     - name: summary
       type: string
       label: current
@@ -753,12 +802,6 @@ wantType:
       initialValue: ""
 
     # Layer 3: Execution status fields
-    - name: status
-      description: Execution status (pending, done, failed)
-      type: string
-      label: current
-      persistent: true
-      initialValue: "pending"
     - name: error
       description: Error message if execution failed
       type: string
@@ -771,6 +814,12 @@ wantType:
       label: current
       persistent: true
       initialValue: ""
+    - name: achieving_percentage
+      description: Execution progress percentage (0-100)
+      type: int
+      label: current
+      persistent: false
+      initialValue: 0
 
     # Layer 4: Output fields (values written by agent via agent.yaml state_updates)
     - name: reservation_datetime
@@ -791,6 +840,16 @@ wantType:
       label: current
       persistent: true
       initialValue: ""
+
+  finalizeWhen:
+    achieved:
+      field: mrs_raw_output
+      operator: "!="
+      value: null
+    failed:
+      field: error
+      operator: "!="
+      value: ""
 
   onInitialize:
     current:
@@ -823,8 +882,8 @@ wantType:
 - [ ] `name:` frontmatter matches directory name exactly
 - [ ] `description:` frontmatter is non-empty and ≤ 1024 chars
 - [ ] `SKILL.md` uses `${CLAUDE_SKILL_DIR}/main.py` — no hardcoded absolute paths
-- [ ] `main.py` outputs only valid JSON to stdout on success
-- [ ] `main.py` outputs `{"error": "..."}` + exits non-zero on failure
+- [ ] `main.py` outputs a valid JSON object to stdout as its final line (with `flush=True`)
+- [ ] `main.py` outputs `{"error": "..."}` + exits non-zero on failure (with `flush=True`)
 
 **Machine Readable Skills extensions:**
 - [ ] `## 実行特性` section exists with `実行モデル` = `foreground` or `background`
@@ -835,13 +894,20 @@ wantType:
 - [ ] `## 使用例` section has at least one bash invocation + JSON output pair
 - [ ] `## エラー時` section present
 
+**`main.py` implementation:**
+- [ ] All `print()` calls use `flush=True`
+- [ ] `report_progress(percentage, message)` helper is defined and called at key milestones
+- [ ] Progress calls span 0–100 from start to completion
+- [ ] Optional heavy dependencies (e.g. `playwright`) are imported inside a module-level `try/except ImportError` that prints JSON error + exits
+- [ ] `error_out()` helper prints JSON error with `flush=True` and calls `sys.exit(1)`
+
 **`agent.yaml` (required):**
 - [ ] `agent.yaml` present in skill directory
 - [ ] `metadata.capability` matches the value in want type's `requires:`
 - [ ] `metadata.type` matches `実行モデル` (`foreground` → `do`, `background` → `monitor`)
 - [ ] `script.path` points to `./main.py`
 - [ ] `state_updates` entries have correct `onFetchData` paths matching actual JSON output keys
-- [ ] `state_updates` includes all fields from `## 出力フィールド` plus `status`
+- [ ] `state_updates` includes all fields from `## 出力フィールド` (no `status` — do NOT add `status`)
 
 **Want type YAML (GCP compliance):**
 - [ ] `child-role` label matches `実行モデル` (`foreground` → `doer`, `background` → `monitor`)
@@ -851,4 +917,6 @@ wantType:
 - [ ] No `fetchFrom` or `onFetchData` in want type YAML (those are in `agent.yaml`)
 - [ ] `requires` references the capability name from `agent.yaml` (NOT `do_mrs_agent`/`monitor_mrs_agent`)
 - [ ] `finalResultField` refers to a field defined in state
+- [ ] `finalizeWhen` block present with `achieved` (`mrs_raw_output != null`) and `failed` (`error != ""`) conditions
+- [ ] No `status` field in state (completion is detected via `finalizeWhen`, not a `status` field)
 - [ ] Root `AGENTS.md` updated if new skill changes project overview
