@@ -14,14 +14,24 @@ list-unread-gmail が保存したキャッシュ /tmp/gmail_unread_list.json を
 import json
 import sys
 from pathlib import Path
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+try:
+    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+except ImportError:
+    print(json.dumps({
+        "error": "playwright module not found. Install with: pip3 install playwright && playwright install chromium"
+    }, ensure_ascii=False), flush=True)
+    sys.exit(1)
 
 CDP_URL = "http://127.0.0.1:9222"
 CACHE_FILE = "/tmp/gmail_unread_list.json"
 
 
+def report_progress(percentage, message=""):
+    print(json.dumps({"_progress": percentage, "_message": message}, ensure_ascii=False), flush=True)
+
+
 def error_out(message: str) -> None:
-    print(json.dumps({"error": message}, ensure_ascii=False))
+    print(json.dumps({"error": message}, ensure_ascii=False), flush=True)
     sys.exit(1)
 
 
@@ -75,14 +85,16 @@ def main() -> None:
     try:
         no = int(sys.argv[1])
     except ValueError:
-        error_out(f"番号を整数で指定してください (指定値: {sys.argv[1]})")
+        error_out(f"番号を整数で整数で指定してください (指定値: {sys.argv[1]})")
 
+    report_progress(10, "Loading email cache")
     emails = load_cache()
     target = next((e for e in emails if e["no"] == no), None)
     if target is None:
         valid = [e["no"] for e in emails]
         error_out(f"番号 {no} のメールが見つかりません。有効な番号: {valid}")
 
+    report_progress(20, "Connecting to browser")
     with sync_playwright() as p:
         try:
             browser = p.chromium.connect_over_cdp(CDP_URL)
@@ -92,14 +104,17 @@ def main() -> None:
         context = browser.contexts[0] if browser.contexts else browser.new_context()
         page = context.pages[0] if context.pages else context.new_page()
 
+        report_progress(40, "Navigating to Gmail")
+        report_progress(60, f"Marking email #{no} as read: {target['subject'][:30]}")
         mark_email_read(page, target)
 
+    report_progress(100, "Done")
     print(json.dumps({
         "marked_no": target["no"],
         "subject": target["subject"],
         "sender": target["sender"],
         "date": target["date"],
-    }, ensure_ascii=False, indent=2))
+    }, ensure_ascii=False), flush=True)
 
 
 if __name__ == "__main__":
