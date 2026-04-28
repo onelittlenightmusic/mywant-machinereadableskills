@@ -879,33 +879,33 @@ wantType:
 **AgentSkills compliance:**
 - [ ] Directory named with lowercase alphanumeric + hyphens
 - [ ] `SKILL.md` present
-- [ ] `name:` frontmatter matches directory name exactly
+- [ ] `name:` frontmatter matches directory name exactly (e.g. directory `save-as-want` → `name: save-as-want`)
 - [ ] `description:` frontmatter is non-empty and ≤ 1024 chars
-- [ ] `SKILL.md` uses `${CLAUDE_SKILL_DIR}/main.py` — no hardcoded absolute paths
-- [ ] `main.py` outputs a valid JSON object to stdout as its final line (with `flush=True`)
-- [ ] `main.py` outputs `{"error": "..."}` + exits non-zero on failure (with `flush=True`)
+- [ ] `SKILL.md` contains no hardcoded absolute paths — use `${CLAUDE_SKILL_DIR}` for any path references
 
-**Machine Readable Skills extensions:**
+**Machine Readable Skills extensions (agent.yaml がある場合に追加で適用):**
+- [ ] `agent.yaml` present in skill directory
+- [ ] `agent.yaml` の `script.path` が指す実行可能ファイルが存在する（言語・形式は問わない）
+- [ ] 実行可能ファイルは有効なJSONオブジェクトを stdout の最終行に出力する
+- [ ] 実行可能ファイルは失敗時に `{"error": "..."}` を stdout に出力し非ゼロで終了する
 - [ ] `## 実行特性` section exists with `実行モデル` = `foreground` or `background`
 - [ ] `## パラメータ` section exists (if skill takes arguments), all rows have `フィールド` / `型` / `必須` / `デフォルト` / `説明`
 - [ ] `## 出力フィールド` section exists, all rows have `フィールド名` / `型` / `JSONパス` / `永続化` / `説明`
 - [ ] `JSONパス` values match actual output JSON keys exactly
 - [ ] `status` and `error` are NOT listed in `## 出力フィールド` (handled by Layer 3 status fields)
-- [ ] `## 使用例` section has at least one bash invocation + JSON output pair
+- [ ] `## 使用例` section has at least one invocation example + JSON output pair
 - [ ] `## エラー時` section present
 
-**`main.py` implementation:**
-- [ ] All `print()` calls use `flush=True`
-- [ ] `report_progress(percentage, message)` helper is defined and called at key milestones
-- [ ] Progress calls span 0–100 from start to completion
-- [ ] Optional heavy dependencies (e.g. `playwright`) are imported inside a module-level `try/except ImportError` that prints JSON error + exits
-- [ ] `error_out()` helper prints JSON error with `flush=True` and calls `sys.exit(1)`
+**実行可能スクリプトの実装:**
+- [ ] stdout への出力は即時フラッシュする（Python なら `flush=True`、シェルなら標準動作）
+- [ ] 進捗は `{"_progress": <0-100>, "_message": "..."}` 形式で随時出力する
+- [ ] 最終結果の前に `_progress` キーを含めない
+- [ ] `error_out()` 相当の処理でJSON errorを出力し非ゼロ終了する
 
-**`agent.yaml` (required):**
-- [ ] `agent.yaml` present in skill directory
+**`agent.yaml` (MRS required):**
 - [ ] `metadata.capability` matches the value in want type's `requires:`
 - [ ] `metadata.type` matches `実行モデル` (`foreground` → `do`, `background` → `monitor`)
-- [ ] `script.path` points to `./main.py`
+- [ ] `script.path` points to an executable file (any language)
 - [ ] `state_updates` entries have correct `onFetchData` paths matching actual JSON output keys
 - [ ] `state_updates` includes all fields from `## 出力フィールド` (no `status` — do NOT add `status`)
 
