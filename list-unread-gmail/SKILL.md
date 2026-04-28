@@ -3,7 +3,6 @@ name: list-unread-gmail
 description: Playwright経由でGmailにアクセスし、未読の重要メールをJSON形式で取得する。Gmail重要メールの確認・一覧表示・未読数の把握が必要なときに使用する。
 compatibility: Requires Python 3.x, playwright, and a running Chrome/Chromium CDP server at localhost:9222
 metadata:
-  output-format: json
   json-schema: see "出力JSON形式" section below
 ---
 

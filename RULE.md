@@ -65,7 +65,6 @@ compatibility:               # Optional. Runtime requirements.
     - playwright (sync_api)
     - Chrome with remote debugging on port 9222
 metadata:                    # Optional. Controls want type YAML generation.
-  output-format: json        # json (default) | agent-based
   type-name: <snake_case>    # Generated want type name. Defaults to name slug.
   category: <category>       # Want type category. Inferred from name/description if omitted.
   final-result-field: <field> # State field to use as finalResultField. Auto-selected if omitted.
@@ -76,7 +75,6 @@ metadata:                    # Optional. Controls want type YAML generation.
 
 | Field | Default when omitted | Effect on generated YAML |
 |---|---|---|
-| `output-format` | `json` | `json` → MRS agent-based generation. `agent-based` → skip YAML generation. |
 | `type-name` | Slug of `name` (e.g. `mywant-foo-plugin` → `foo`) | `wantType.metadata.name` |
 | `category` | Inferred from name/description keywords | `wantType.metadata.category` |
 | `final-result-field` | First `永続化: true` field in `## 出力フィールド` | `wantType.finalResultField` |
